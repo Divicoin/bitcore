@@ -10,7 +10,8 @@ log.disableColor();
 
 const Bitcore = {
   btc: require('bitcore-lib'),
-  bch: require('bitcore-lib-cash')
+  bch: require('bitcore-lib-cash'),
+  divi: require('divicore-lib')
 };
 
 const Common = require('../common');

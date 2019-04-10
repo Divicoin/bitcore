@@ -1,7 +1,7 @@
 'use strict';
 
 module.exports = {
-  MIN_FEE_PER_KB: 0,
+  MIN_FEE_PER_KB: 1000,
   MAX_FEE_PER_KB: 10000 * 1000, // 10k sat/b
   MIN_TX_FEE: 0,
   MAX_TX_FEE: 0.1 * 1e8,
@@ -58,7 +58,12 @@ module.exports = {
         nbBlocks: 2,
         defaultValue: 2000
       }
-    ]
+    ],
+    divi: [{
+      name: 'normal',
+      nbBlocks: 6,
+      defaultValue: 10000
+    }]
   },
 
   // How many levels to fallback to if the value returned by the network for a given nbBlocks is -1
@@ -137,7 +142,7 @@ module.exports = {
     // },
   },
 
-  COIN: 'btc',
+  COIN: 'divi',
   INSIGHT_REQUEST_POOL_SIZE: 10,
   INSIGHT_TIMEOUT: 30000,
 

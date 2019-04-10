@@ -7,7 +7,8 @@ const secp256k1 = require('secp256k1');
 const Bitcore = require('bitcore-lib');
 const Bitcore_ = {
   btc: Bitcore,
-  bch: require('bitcore-lib-cash')
+  bch: require('bitcore-lib-cash'),
+  divi: require('divicore-lib')
 };
 
 export class Utils {
@@ -113,6 +114,11 @@ export class Utils {
         toSatoshis: 100000000,
         maxDecimals: 6,
         minDecimals: 2
+      },
+      divi: {
+        toSatoshis: 100000000,
+        maxDecimals: 6,
+        minDecimals: 2
       }
     };
 
@@ -152,6 +158,15 @@ export class Utils {
         minDecimals: 8,
         maxDecimals: 8
       }) + 'btc'
+    );
+  }
+  
+  static formatAmountInDivi(amount) {
+    return (
+      Utils.formatAmount(amount, 'divi', {
+        minDecimals: 8,
+        maxDecimals: 8
+      }) + 'divi'
     );
   }
 
@@ -243,7 +258,12 @@ export class Utils {
         new Bitcore_['bch'].Address(address);
         return 'bch';
       } catch (e) {
-        return;
+        try {
+          new Bitcore_['divi'].Address(address);
+          return 'divi';
+        } catch (e) {
+          return;
+        }
       }
     }
   }

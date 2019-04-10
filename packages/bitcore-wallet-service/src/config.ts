@@ -48,7 +48,13 @@ module.exports = {
         // url: 'http://localhost:3000',
         url: 'https://api.bitcore.io',
       },
-
+    divi: {
+      livenet: {
+        url: 'http://174.138.14.81:3001',
+      },
+      testnet: {
+        url: 'http://localhost:3000'
+      },
     },
   },
   pushNotificationsOpts: {

@@ -1,7 +1,8 @@
 import _ from 'lodash';
 const Bitcore_ = {
   btc: require('bitcore-lib'),
-  bch: require('bitcore-lib-cash')
+  bch: require('bitcore-lib-cash'),
+  divi: require('divicore-lib')
 };
 
 export class BCHAddressTranslator {
@@ -35,7 +36,7 @@ export class BCHAddressTranslator {
     } else {
       ret = _.filter(
         _.map(addresses, (x) => {
-          const bitcore = Bitcore_[from == 'legacy' ? 'btc' : 'bch'];
+          const bitcore = Bitcore_[from == 'legacy' ? 'divi' : 'bch'];
           let orig;
 
           try {
@@ -49,7 +50,7 @@ export class BCHAddressTranslator {
           } else if (to == 'copay') {
             return Bitcore_['bch'].Address.fromObject(orig).toLegacyAddress();
           } else if (to == 'legacy') {
-            return Bitcore_['btc'].Address.fromObject(orig).toString();
+            return Bitcore_['divi'].Address.fromObject(orig).toString();
           }
         })
       );
