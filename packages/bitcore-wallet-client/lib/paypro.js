@@ -1,12 +1,12 @@
 var $ = require('preconditions').singleton();
 const URL = require('url');
 const _ = require('lodash');
-var Bitcore = require('bitcore-lib');
 const Errors = require('./errors');
-var Bitcore_ = {
-  btc: Bitcore,
-  bch: require('bitcore-lib-cash'),
-};
+
+const config = require('./config');
+const CORE_LIBS = config.CORE_LIBS;
+const DEFAULT_COIN = config.DEFAULT_COIN;
+
 const request = require('request');
 const JSON_PAYMENT_REQUEST_CONTENT_TYPE = 'application/payment-request';
 const JSON_PAYMENT_VERIFY_CONTENT_TYPE = 'application/verify-payment';
@@ -26,7 +26,8 @@ const MAX_FEE_PER_KB = 500000;
 /**
  * Verifies the signature of a given payment request is both valid and from a trusted key
  */
-PayPro._verify = function (requestUrl, headers, network, trustedKeys, callback) {
+PayPro._verify = function (requestUrl, headers, coin, network, trustedKeys, callback) {
+  coin = coin || DEFAULT_COIN;
   let hash = headers.digest.split('=')[1];
   let signature = headers.signature;
   let signatureType = headers['x-signature-type'];
@@ -93,15 +94,15 @@ PayPro._verify = function (requestUrl, headers, network, trustedKeys, callback) 
   sigbuf.copy(s_r,0,0); 
   sigbuf.copy(s_s,0,32);
 
-  let s_rBN = Bitcore.crypto.BN.fromBuffer(s_r); 
-  let s_sBN = Bitcore.crypto.BN.fromBuffer(s_s); 
+  let s_rBN = CORE_LIBS[coin].crypto.BN.fromBuffer(s_r); 
+  let s_sBN = CORE_LIBS[coin].crypto.BN.fromBuffer(s_s); 
 
-  let pub = Bitcore.PublicKey.fromString(keyData.publicKey);
+  let pub = CORE_LIBS[coin].PublicKey.fromString(keyData.publicKey);
 
-  let sig = new Bitcore.crypto.Signature(); 
+  let sig = new CORE_LIBS[coin].crypto.Signature(); 
   sig.set({r: s_rBN, s: s_sBN});
 
-  let valid = Bitcore.crypto.ECDSA.verify(
+  let valid = CORE_LIBS[coin].crypto.ECDSA.verify(
     hashbuf, 
     sig, 
     pub
@@ -117,6 +118,8 @@ PayPro._verify = function (requestUrl, headers, network, trustedKeys, callback) 
 
 PayPro.runRequest = function (opts, cb) {
   $.checkArgument(opts.network, 'should pass network');
+
+  const coin = opts.coin || DEFAULT_COIN;
 
   PayPro.request(opts, (err, res, body) => {
     if (err) return cb(err);
@@ -165,13 +168,13 @@ PayPro.runRequest = function (opts, cb) {
     
     // Step 1: Check digest from header
     let digest = res.headers.digest.split('=')[1];
-    let hash = Bitcore.crypto.Hash.sha256(Buffer.from(body,'utf8')).toString('hex');
+    let hash = CORE_LIBS[coin].crypto.Hash.sha256(Buffer.from(body,'utf8')).toString('hex');
 
     if (digest !== hash) {
       return cb(new Error(`Response body hash does not match digest header. Actual: ${hash} Expected: ${digest}`));
     }
     // Step 2: verify digest's signature
-    PayPro._verify(opts.url, res.headers, opts.network, opts.trustedKeys, (err) => {
+    PayPro._verify(opts.url, res.headers, coin, opts.network, opts.trustedKeys, (err) => {
       if (err) return cb(err);
 
       let ret = body;
@@ -186,8 +189,7 @@ PayPro.get = function(opts, cb) {
   $.checkArgument(opts && opts.url);
   opts.trustedKeys = opts.trustedKeys || dfltTrustedKeys;
 
-  var coin = opts.coin || 'btc';
-  var bitcore = Bitcore_[coin];
+  var coin = opts.coin || DEFAULT_COIN;
 
   var COIN = coin.toUpperCase();
   opts.headers = opts.headers || {
@@ -243,7 +245,7 @@ PayPro.get = function(opts, cb) {
     ret.amount = data.outputs[0].amount;
 
     try {
-      ret.toAddress = (new bitcore.Address(data.outputs[0].address)).toString();
+      ret.toAddress = (new CORE_LIBS[coin].Address(data.outputs[0].address)).toString();
     } catch (e) {
       return cb(new Error('Bad output address '+ e));
     }
@@ -267,7 +269,7 @@ PayPro.send = function(opts, cb) {
     .checkArgument(opts.rawTx);
 
 
-  var coin = opts.coin || 'btc';
+  var coin = opts.coin || DEFAULT_COIN;
   var COIN = coin.toUpperCase();
 
   opts.network = opts.network || 'livenet';

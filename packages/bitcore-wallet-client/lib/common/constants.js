@@ -43,6 +43,17 @@ Constants.UNITS = {
       minDecimals: 0,
     }
   },
+  divi: {
+    toSatoshis: 100000000,
+    full: {
+      maxDecimals: 8,
+      minDecimals: 8,
+    },
+    short: {
+      maxDecimals: 6,
+      minDecimals: 2,
+    }
+  }
 };
 
 module.exports = Constants;

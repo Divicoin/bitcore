@@ -17,6 +17,11 @@ client.Verifier = require('./verifier');
 client.Utils = require('./common/utils');
 client.sjcl = require('sjcl');
 
+const config = require('./config');
+const CORE_LIBS = config.CORE_LIBS;
+
 // Expose bitcore
-client.Bitcore = require('bitcore-lib');
-client.BitcoreCash = require('bitcore-lib-cash');
+client.CoreLibs = CORE_LIBS;
+client.Bitcore = CORE_LIBS['btc'];
+client.BitcoreCash = CORE_LIBS['bch'];
+client.Divicore = CORE_LIBS['divi'];

@@ -1,11 +1,12 @@
 var $ = require('preconditions').singleton();
 var _ = require('lodash');
 
-var Bitcore = require('bitcore-lib');
-var BCHAddress = require('bitcore-lib-cash').Address;
-
 var Common = require('./common');
 var Utils = Common.Utils;
+
+const config = require('./config');
+const CORE_LIBS = config.CORE_LIBS;
+const DEFAULT_COIN = config.DEFAULT_COIN;
 
 var log = require('./log');
 
@@ -40,7 +41,7 @@ Verifier.checkAddress = function(credentials, address) {
  */
 Verifier.checkCopayers = function(credentials, copayers) {
   $.checkState(credentials.walletPrivKey);
-  var walletPubKey = Bitcore.PrivateKey.fromString(credentials.walletPrivKey).toPublicKey().toString();
+  var walletPubKey = CORE_LIBS[credentials.coin].PrivateKey.fromString(credentials.walletPrivKey).toPublicKey().toString();
 
   if (copayers.length != credentials.n) {
     log.error('Missing public keys in server response');
@@ -64,7 +65,7 @@ Verifier.checkCopayers = function(credentials, copayers) {
       error = true;
     } else {
       var hash = Utils.getCopayerHash(copayer.encryptedName || copayer.name, copayer.xPubKey, copayer.requestPubKey);
-      if (!Utils.verifyMessage(hash, copayer.signature, walletPubKey)) {
+      if (!Utils.verifyMessage(hash, copayer.signature, walletPubKey, credentials.coin)) {
         log.error('Invalid signatures in server response');
         error = true;
       }
@@ -127,8 +128,10 @@ Verifier.checkTxProposalSignature = function(credentials, txp) {
   $.checkArgument(txp.creatorId);
   $.checkState(credentials.isComplete());
 
+  var coin = txp.coin || DEFAULT_COIN;
+
   var creatorKeys = _.find(credentials.publicKeyRing, function(item) {
-    if (Utils.xPubToCopayerId(txp.coin || 'btc', item.xPubKey) === txp.creatorId) return true;
+    if (Utils.xPubToCopayerId(coin, item.xPubKey) === txp.creatorId) return true;
   });
 
   if (!creatorKeys) return false;
@@ -138,7 +141,7 @@ Verifier.checkTxProposalSignature = function(credentials, txp) {
   if (txp.proposalSignaturePubKey) {
 
     // Verify it...
-    if (!Utils.verifyRequestPubKey(txp.proposalSignaturePubKey, txp.proposalSignaturePubKeySig, creatorKeys.xPubKey))
+    if (!Utils.verifyRequestPubKey(txp.proposalSignaturePubKey, txp.proposalSignaturePubKeySig, creatorKeys.xPubKey, coin))
       return false;
 
     creatorSigningPubKey = txp.proposalSignaturePubKey;
@@ -157,7 +160,7 @@ Verifier.checkTxProposalSignature = function(credentials, txp) {
   }
 
   log.debug('Regenerating & verifying tx proposal hash -> Hash: ', hash, ' Signature: ', txp.proposalSignature);
-  if (!Utils.verifyMessage(hash, txp.proposalSignature, creatorSigningPubKey))
+  if (!Utils.verifyMessage(hash, txp.proposalSignature, creatorSigningPubKey, coin))
     return false;
 
   if (!Verifier.checkAddress(credentials, txp.changeAddress))
@@ -181,16 +184,14 @@ Verifier.checkPaypro = function(txp, payproOpts) {
     amount = txp.amount;
   }
 
-
   if (amount != payproOpts.amount)
     return false;
 
-
-  if (txp.coin == 'btc' && toAddress != payproOpts.toAddress)
+  if (txp.coin == DEFAULT_COIN && toAddress != payproOpts.toAddress)
     return false;
 
   // To circunvent cashaddr/legacy address problems...
-  if (txp.coin == 'bch' && (new BCHAddress(toAddress).toString()) != (new BCHAddress(payproOpts.toAddress).toString())) 
+  if (txp.coin == 'bch' && (new CORE_LIBS['bch'].Address(toAddress).toString()) != (new CORE_LIBS['bch'].Address(payproOpts.toAddress).toString())) 
     return false;
 
 // this generates problems...

@@ -4,6 +4,12 @@ var $ = require('preconditions').singleton();
 var _ = require('lodash');
 
 var Bitcore = require('bitcore-lib');
+
+const config = require('./config');
+const CORE_LIBS = config.CORE_LIBS;
+const DEFAULT_COIN = config.DEFAULT_COIN;
+const VALID_COINS = config.VALID_COINS;
+
 var Mnemonic = require('bitcore-mnemonic');
 var sjcl = require('sjcl');
 
@@ -49,7 +55,7 @@ function Credentials() {
 };
 
 function _checkCoin(coin) {
-  if (!_.includes(['btc', 'bch'], coin)) throw new Error('Invalid coin');
+  if (!_.includes(VALID_COINS, coin)) throw new Error('Invalid coin');
 };
 
 function _checkNetwork(network) {
@@ -64,7 +70,7 @@ Credentials.create = function(coin, network) {
 
   x.coin = coin;
   x.network = network;
-  x.xPrivKey = (new Bitcore.HDPrivateKey(network)).toString();
+  x.xPrivKey = (new CORE_LIBS[coin].HDPrivateKey(network)).toString();
   x.compliantDerivation = true;
   x._expand();
   return x;
@@ -96,7 +102,7 @@ Credentials.createWithMnemonic = function(coin, network, passphrase, language, a
   x.coin = coin;
   x.network = network;
   x.account = account;
-  x.xPrivKey = m.toHDPrivateKey(passphrase, network).toString();
+  x.xPrivKey = m.toHDPrivateKey(passphrase, network, coin).toString();
   x.compliantDerivation = true;
   x._expand();
   x.mnemonic = m.phrase;
@@ -139,7 +145,7 @@ Credentials.fromMnemonic = function(coin, network, words, passphrase, account, d
   var m = new Mnemonic(words);
   var x = new Credentials();
   x.coin = coin;
-  x.xPrivKey = m.toHDPrivateKey(passphrase, network).toString();
+  x.xPrivKey = m.toHDPrivateKey(passphrase, network, coin).toString();
   x.mnemonic = words;
   x.mnemonicHasPassphrase = !!passphrase;
   x.account = account;
@@ -191,8 +197,9 @@ Credentials.fromExtendedPublicKey = function(coin, xPubKey, source, entropySourc
 };
 
 // Get network from extended private key or extended public key
-Credentials._getNetworkFromExtendedKey = function(xKey) {
+Credentials._getNetworkFromExtendedKey = function(xKey, coin) {
   $.checkArgument(xKey && _.isString(xKey));
+  if (coin == 'divi') return xKey.charAt(0) == 'D' ? 'testnet' : 'livenet';
   return xKey.charAt(0) == 't' ? 'testnet' : 'livenet';
 };
 
@@ -240,7 +247,7 @@ Credentials.prototype._expand = function() {
  
   */
 
-  var network = Credentials._getNetworkFromExtendedKey(this.xPrivKey || this.xPubKey);
+  var network = Credentials._getNetworkFromExtendedKey(this.xPrivKey || this.xPubKey, this.coin);
   if (this.network) {
     $.checkState(this.network == network);
   } else {
@@ -248,7 +255,7 @@ Credentials.prototype._expand = function() {
   }
 
   if (this.xPrivKey) {
-    var xPrivKey = new Bitcore.HDPrivateKey.fromString(this.xPrivKey);
+    var xPrivKey = new CORE_LIBS[this.coin].HDPrivateKey.fromString(this.xPrivKey);
 
     var deriveFn = this.compliantDerivation ? _.bind(xPrivKey.deriveChild, xPrivKey) : _.bind(xPrivKey.deriveNonCompliantChild, xPrivKey);
 
@@ -302,7 +309,7 @@ Credentials.fromObj = function(obj) {
     x[k] = obj[k];
   });
 
-  x.coin = x.coin || 'btc';
+  x.coin = x.coin || DEFAULT_COIN;
   x.derivationStrategy = x.derivationStrategy || Constants.DERIVATION_STRATEGIES.BIP45;
   x.addressType = x.addressType || Constants.SCRIPT_TYPES.P2SH;
   x.account = x.account || 0;
@@ -334,13 +341,18 @@ Credentials.prototype.getBaseAddressDerivationPath = function() {
       break;
   }
 
-  var coin = (this.network == 'livenet' ? "0" : "1");
+  var coin = '';
+  if (this.coin != 'divi')
+    coin = (this.network == 'livenet' ? "0" : "1");
+  else
+    coin = (this.network == 'livenet' ? "301" : "1");
+
   return "m/" + purpose + "'/" + coin + "'/" + this.account + "'";
 };
 
 Credentials.prototype.getDerivedXPrivKey = function(password) {
   var path = this.getBaseAddressDerivationPath();
-  var xPrivKey = new Bitcore.HDPrivateKey(this.getKeys(password).xPrivKey, this.network);
+  var xPrivKey = new CORE_LIBS[this.coin || DEFAULT_COIN].HDPrivateKey(this.getKeys(password).xPrivKey, this.network);
   var deriveFn = !!this.compliantDerivation ? _.bind(xPrivKey.deriveChild, xPrivKey) : _.bind(xPrivKey.deriveNonCompliantChild, xPrivKey);
   return deriveFn(path);
 };
@@ -486,22 +498,23 @@ Credentials.prototype.clearMnemonic = function() {
 
 
 Credentials.fromOldCopayWallet = function(w) {
-  function walletPrivKeyFromOldCopayWallet(w) {
+  function walletPrivKeyFromOldCopayWallet(w, coin) {
     // IN BWS, the master Pub Keys are not sent to the server, 
     // so it is safe to use them as seed for wallet's shared secret.
     var seed = w.publicKeyRing.copayersExtPubKeys.sort().join('');
     var seedBuf = new Buffer(seed);
-    var privKey = new Bitcore.PrivateKey.fromBuffer(Bitcore.crypto.Hash.sha256(seedBuf));
+    var privKey = new CORE_LIBS[coin].PrivateKey.fromBuffer(Bitcore.crypto.Hash.sha256(seedBuf));
     return privKey.toString();
   };
 
+  var coin = DEFAULT_COIN;
   var credentials = new Credentials();
-  credentials.coin = 'btc';
+  credentials.coin = coin;
   credentials.derivationStrategy = Constants.DERIVATION_STRATEGIES.BIP45;
   credentials.xPrivKey = w.privateKey.extendedPrivateKeyString;
   credentials._expand();
 
-  credentials.addWalletPrivateKey(walletPrivKeyFromOldCopayWallet(w));
+  credentials.addWalletPrivateKey(walletPrivKeyFromOldCopayWallet(w, coin));
   credentials.addWalletInfo(w.opts.id, w.opts.name, w.opts.requiredCopayers, w.opts.totalCopayers)
 
   var pkr = _.map(w.publicKeyRing.copayersExtPubKeys, function(xPubStr) {
@@ -511,16 +524,16 @@ Credentials.fromOldCopayWallet = function(w) {
 
     if (isMe) {
       var path = Constants.PATHS.REQUEST_KEY;
-      requestDerivation = (new Bitcore.HDPrivateKey(credentials.xPrivKey))
+      requestDerivation = (new CORE_LIBS[coin].HDPrivateKey(credentials.xPrivKey))
         .deriveChild(path).hdPublicKey;
     } else {
       // this 
       var path = Constants.PATHS.REQUEST_KEY_AUTH;
-      requestDerivation = (new Bitcore.HDPublicKey(xPubStr)).deriveChild(path);
+      requestDerivation = (new CORE_LIBS[coin].HDPublicKey(xPubStr)).deriveChild(path);
     }
 
     // Grab Copayer Name
-    var hd = new Bitcore.HDPublicKey(xPubStr).deriveChild('m/2147483646/0/0');
+    var hd = new CORE_LIBS[coin].HDPublicKey(xPubStr).deriveChild('m/2147483646/0/0');
     var pubKey = hd.publicKey.toString('hex');
     var copayerName = w.publicKeyRing.nicknameFor[pubKey];
     if (isMe) {

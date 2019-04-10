@@ -1,19 +1,13 @@
 'use strict';
 
+const config = require('../config');
+const CORE_LIBS = config.CORE_LIBS;
+const DEFAULT_COIN = config.DEFAULT_COIN;
+
 var _ = require('lodash');
 var $ = require('preconditions').singleton();
 var sjcl = require('sjcl');
 var Stringify = require('json-stable-stringify');
-
-var Bitcore = require('bitcore-lib');
-var Bitcore_ = {
-  btc: Bitcore,
-  bch: require('bitcore-lib-cash'),
-};
-var PrivateKey = Bitcore.PrivateKey;
-var PublicKey = Bitcore.PublicKey;
-var crypto = Bitcore.crypto;
-var encoding = Bitcore.encoding;
 
 var Constants = require('./constants');
 var Defaults = require('./defaults');
@@ -75,36 +69,36 @@ Utils.decryptMessageNoThrow = function(cyphertextJson, encryptingKey) {
 
 /* TODO: It would be nice to be compatible with bitcoind signmessage. How
  * the hash is calculated there? */
-Utils.hashMessage = function(text) {
+Utils.hashMessage = function(text, coin) {
   $.checkArgument(text);
   var buf = new Buffer(text);
-  var ret = crypto.Hash.sha256sha256(buf);
-  ret = new Bitcore.encoding.BufferReader(ret).readReverse();
+  var ret = CORE_LIBS[coin].crypto.Hash.sha256sha256(buf);
+  ret = new CORE_LIBS[coin].encoding.BufferReader(ret).readReverse();
   return ret;
 };
 
 
-Utils.signMessage = function(text, privKey) {
+Utils.signMessage = function(text, privKey, coin) {
   $.checkArgument(text);
-  var priv = new PrivateKey(privKey);
-  var hash = Utils.hashMessage(text);
-  return crypto.ECDSA.sign(hash, priv, 'little').toString();
+  var priv = new CORE_LIBS[coin].PrivateKey(privKey);
+  var hash = Utils.hashMessage(text, coin);
+  return CORE_LIBS[coin].ECDSA.sign(hash, priv, 'little').toString();
 };
 
 
-Utils.verifyMessage = function(text, signature, pubKey) {
+Utils.verifyMessage = function(text, signature, pubKey, coin) {
   $.checkArgument(text);
   $.checkArgument(pubKey);
 
   if (!signature)
     return false;
 
-  var pub = new PublicKey(pubKey);
-  var hash = Utils.hashMessage(text);
+  var pub = new CORE_LIBS[coin].PublicKey(pubKey);
+  var hash = Utils.hashMessage(text, coin);
 
   try {
-    var sig = new crypto.Signature.fromString(signature);
-    return crypto.ECDSA.verify(hash, sig, pub, 'little');
+    var sig = new CORE_LIBS[coin].Signature.fromString(signature);
+    return CORE_LIBS[coin].ECDSA.verify(hash, sig, pub, 'little');
   } catch (e) {
     return false;
   }
@@ -112,9 +106,9 @@ Utils.verifyMessage = function(text, signature, pubKey) {
 
 Utils.privateKeyToAESKey = function(privKey) {
   $.checkArgument(privKey && _.isString(privKey));
-  $.checkArgument(Bitcore.PrivateKey.isValid(privKey), 'The private key received is invalid');
-  var pk = Bitcore.PrivateKey.fromString(privKey);
-  return Bitcore.crypto.Hash.sha256(pk.toBuffer()).slice(0, 16).toString('base64');
+  $.checkArgument(CORE_LIBS[DEFAULT_COIN].PrivateKey.isValid(privKey), 'The private key received is invalid');
+  var pk = CORE_LIBS[DEFAULT_COIN].PrivateKey.fromString(privKey);
+  return CORE_LIBS[DEFAULT_COIN].crypto.Hash.sha256(pk.toBuffer()).slice(0, 16).toString('base64');
 };
 
 Utils.getCopayerHash = function(name, xPubKey, requestPubKey) {
@@ -137,45 +131,44 @@ Utils.getProposalHash = function(proposalHeader) {
 Utils.deriveAddress = function(scriptType, publicKeyRing, path, m, network, coin) {
   $.checkArgument(_.includes(_.values(Constants.SCRIPT_TYPES), scriptType));
 
-  coin = coin || 'btc';
-  var bitcore = Bitcore_[coin];
+  coin = coin || DEFAULT_COIN;
   var publicKeys = _.map(publicKeyRing, function(item) {
-    var xpub = new bitcore.HDPublicKey(item.xPubKey);
+    var xpub = new CORE_LIBS[coin].HDPublicKey(item.xPubKey);
     return xpub.deriveChild(path).publicKey;
   });
 
-  var bitcoreAddress;
+  var address;
   switch (scriptType) {
     case Constants.SCRIPT_TYPES.P2SH:
-      bitcoreAddress = bitcore.Address.createMultisig(publicKeys, m, network);
+      address = CORE_LIBS[coin].Address.createMultisig(publicKeys, m, network);
       break;
     case Constants.SCRIPT_TYPES.P2PKH:
       $.checkState(_.isArray(publicKeys) && publicKeys.length == 1);
-      bitcoreAddress = bitcore.Address.fromPublicKey(publicKeys[0], network);
+      address = CORE_LIBS[coin].Address.fromPublicKey(publicKeys[0], network);
       break;
   }
 
   return {
-    address: coin == 'bch' ?  bitcoreAddress.toLegacyAddress() : bitcoreAddress.toString(),
+    address: coin == 'bch' ?  address.toLegacyAddress() : address.toString(),
     path: path,
     publicKeys: _.invokeMap(publicKeys, 'toString'),
   };
 };
 
 Utils.xPubToCopayerId = function(coin, xpub) {
-  var str = coin == 'btc' ? xpub : coin + xpub;
+  var str = coin !== 'bch' ? xpub : coin + xpub;
   var hash = sjcl.hash.sha256.hash(str);
   return sjcl.codec.hex.fromBits(hash);
 };
 
-Utils.signRequestPubKey = function(requestPubKey, xPrivKey) {
-  var priv = new Bitcore.HDPrivateKey(xPrivKey).deriveChild(Constants.PATHS.REQUEST_KEY_AUTH).privateKey;
-  return Utils.signMessage(requestPubKey, priv);
+Utils.signRequestPubKey = function(requestPubKey, xPrivKey, coin) {
+  var priv = new CORE_LIBS[coin].HDPrivateKey(xPrivKey).deriveChild(Constants.PATHS.REQUEST_KEY_AUTH).privateKey;
+  return Utils.signMessage(requestPubKey, priv, coin);
 };
 
-Utils.verifyRequestPubKey = function(requestPubKey, signature, xPubKey) {
-  var pub = (new Bitcore.HDPublicKey(xPubKey)).deriveChild(Constants.PATHS.REQUEST_KEY_AUTH).publicKey;
-  return Utils.verifyMessage(requestPubKey, signature, pub.toString());
+Utils.verifyRequestPubKey = function(requestPubKey, signature, xPubKey, coin) {
+  var pub = (new CORE_LIBS[coin].HDPublicKey(xPubKey)).deriveChild(Constants.PATHS.REQUEST_KEY_AUTH).publicKey;
+  return Utils.verifyMessage(requestPubKey, signature, pub.toString(), coin);
 };
 
 Utils.formatAmount = function(satoshis, unit, opts) {
@@ -212,11 +205,9 @@ Utils.formatAmount = function(satoshis, unit, opts) {
 };
 
 Utils.buildTx = function(txp) {
-  var coin = txp.coin || 'btc';
+  var coin = txp.coin || DEFAULT_COIN;
 
-  var bitcore = Bitcore_[coin];
-
-  var t = new bitcore.Transaction();
+  var t = new CORE_LIBS[coin].Transaction();
 
   $.checkState(_.includes(_.values(Constants.SCRIPT_TYPES), txp.addressType));
 
@@ -237,7 +228,7 @@ Utils.buildTx = function(txp) {
     _.each(txp.outputs, function(o) {
       $.checkState(o.script || o.toAddress, 'Output should have either toAddress or script specified');
       if (o.script) {
-        t.addOutput(new bitcore.Transaction.Output({
+        t.addOutput(new CORE_LIBS[coin].Transaction.Output({
           script: o.script,
           satoshis: o.amount
         }));

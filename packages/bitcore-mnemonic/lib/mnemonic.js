@@ -1,17 +1,20 @@
 'use strict';
 
-var bitcore = require('bitcore-lib');
-var BN = bitcore.crypto.BN;
+const config = require('./config');
+const CORE_LIBS = config.CORE_LIBS;
+const DEFAULT_COIN = config.DEFAULT_COIN;
+
+var BN = CORE_LIBS[DEFAULT_COIN].crypto.BN;
 var unorm = require('unorm');
-var _ = bitcore.deps._;
+var _ = CORE_LIBS[DEFAULT_COIN].deps._;
 
 var pbkdf2 = require('./pbkdf2');
 var errors = require('./errors');
 
-var Hash = bitcore.crypto.Hash;
-var Random = bitcore.crypto.Random;
+var Hash = CORE_LIBS[DEFAULT_COIN].crypto.Hash;
+var Random = CORE_LIBS[DEFAULT_COIN].crypto.Random;
 
-var $ = bitcore.util.preconditions;
+var $ = CORE_LIBS[DEFAULT_COIN].util.preconditions;
 
 
 /**
@@ -56,7 +59,7 @@ var Mnemonic = function(data, wordlist) {
   } else if (_.isNumber(data)) {
     ent = data;
   } else if (data) {
-    throw new bitcore.errors.InvalidArgument('data', 'Must be a Buffer, a string or an integer');
+    throw new CORE_LIBS[DEFAULT_COIN].errors.InvalidArgument('data', 'Must be a Buffer, a string or an integer');
   }
   ent = ent || 128;
 
@@ -203,9 +206,9 @@ Mnemonic.fromSeed = function(seed, wordlist) {
  * @param {Network|String|number=} [network] - The network: 'livenet' or 'testnet'
  * @returns {HDPrivateKey}
  */
-Mnemonic.prototype.toHDPrivateKey = function(passphrase, network) {
+Mnemonic.prototype.toHDPrivateKey = function(passphrase, network, coin) {
   var seed = this.toSeed(passphrase);
-  return bitcore.HDPrivateKey.fromSeed(seed, network);
+  return CORE_LIBS[coin || DEFAULT_COIN].HDPrivateKey.fromSeed(seed, network);
 };
 
 /**
@@ -293,6 +296,6 @@ Mnemonic._entropyChecksum = function(entropy) {
   return checksum;
 };
 
-Mnemonic.bitcore = bitcore;
+Mnemonic.bitcore = CORE_LIBS[DEFAULT_COIN];
 
 module.exports = Mnemonic;

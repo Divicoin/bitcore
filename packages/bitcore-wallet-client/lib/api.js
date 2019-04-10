@@ -5,11 +5,6 @@ var $ = require('preconditions').singleton();
 var util = require('util');
 var async = require('async');
 var events = require('events');
-var Bitcore = require('bitcore-lib');
-var Bitcore_ = {
-  btc: Bitcore,
-  bch: require('bitcore-lib-cash'),
-};
 var Mnemonic = require('bitcore-mnemonic');
 var sjcl = require('sjcl');
 var url = require('url');
@@ -27,7 +22,11 @@ var Verifier = require('./verifier');
 var Errors = require('./errors');
 const Request = require('./request');
 
-var BASE_URL = 'http://localhost:3232/bws/api';
+const config = require('./config');
+const CORE_LIBS = config.CORE_LIBS;
+const DEFAULT_COIN = config.DEFAULT_COIN;
+const VALID_COINS = config.VALID_COINS;
+var BASE_URL = config.BASE_URL;
 
 /**
  * @desc ClientAPI constructor.
@@ -215,7 +214,7 @@ API.prototype._processTxps = function(txps) {
  * Seed from random
  *
  * @param {Object} opts
- * @param {String} opts.coin - default 'btc'
+ * @param {String} opts.coin - default DEFAULT_COIN
  * @param {String} opts.network - default 'livenet'
  */
 API.prototype.seedFromRandom = function(opts) {
@@ -223,7 +222,7 @@ API.prototype.seedFromRandom = function(opts) {
   $.checkArgument(_.isUndefined(opts) || _.isObject(opts), 'DEPRECATED: argument should be an options object.');
 
   opts = opts || {};
-  this.credentials = Credentials.create(opts.coin || 'btc', opts.network || 'livenet');
+  this.credentials = Credentials.create(opts.coin || DEFAULT_COIN, opts.network || 'livenet');
 
   this.request.setCredentials(this.credentials);
 };
@@ -245,29 +244,29 @@ API.prototype.validateKeyDerivation = function(opts, cb) {
 
   var c = self.credentials;
 
-  function testMessageSigning(xpriv, xpub) {
+  function testMessageSigning(xpriv, xpub, coin) {
     var nonHardenedPath = 'm/0/0';
     var message = 'Lorem ipsum dolor sit amet, ne amet urbanitas percipitur vim, libris disputando his ne, et facer suavitate qui. Ei quidam laoreet sea. Cu pro dico aliquip gubergren, in mundi postea usu. Ad labitur posidonium interesset duo, est et doctus molestie adipiscing.';
     var priv = xpriv.deriveChild(nonHardenedPath).privateKey;
-    var signature = Utils.signMessage(message, priv);
+    var signature = Utils.signMessage(message, priv, coin);
     var pub = xpub.deriveChild(nonHardenedPath).publicKey;
-    return Utils.verifyMessage(message, signature, pub);
+    return Utils.verifyMessage(message, signature, pub, coin);
   };
 
   function testHardcodedKeys() {
     var words = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
     var xpriv = Mnemonic(words).toHDPrivateKey();
 
-    if (xpriv.toString() != 'xprv9s21ZrQH143K3GJpoapnV8SFfukcVBSfeCficPSGfubmSFDxo1kuHnLisriDvSnRRuL2Qrg5ggqHKNVpxR86QEC8w35uxmGoggxtQTPvfUu') return false;
+    if (xpriv.toString() != 'TDt9EWvD5T5T44hAaTsConR1qBrqkdU1esevvcwZ3UG5YzSrVJccxyfEqmGbNHWRneKmVxYqhTfNczLjUpJ3B4Sgn143MmGWDfSLdj3AAARsdD4') return false;
 
     xpriv = xpriv.deriveChild("m/44'/0'/0'");
-    if (xpriv.toString() != 'xprv9xpXFhFpqdQK3TmytPBqXtGSwS3DLjojFhTGht8gwAAii8py5X6pxeBnQ6ehJiyJ6nDjWGJfZ95WxByFXVkDxHXrqu53WCRGypk2ttuqncb') return false;
+    if (xpriv.toString() != 'TDt9EciimHvzte4AafLMtan4swh329kcWS1zY7j78xxVpF1omCDdFV1AWd7etXSuAvWeAqSYnsHxVSay7dmTk94pL4PmGdFdm6aovrpJeg9uZyZ') return false;
 
-    var xpub = Bitcore.HDPublicKey.fromString('xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj');
-    return testMessageSigning(xpriv, xpub);
+    var xpub = CORE_LIBS[DEFAULT_COIN].HDPublicKey.fromString('ToEA6kdSDwa2hjD4R96h7jpcj6vCs53BMzSDTSoWAfiMU5jmsXEGxNpmSooGwhaUVsbNTcudi4Gf1AcACxJhfudFhgVT6NjbGN1dShiq7DZjnJg');
+    return testMessageSigning(xpriv, xpub, DEFAULT_COIN);
   };
 
-  function testLiveKeys() {
+  function testLiveKeys(coin) {
     var words;
     try {
       words = c.getMnemonic();
@@ -276,15 +275,15 @@ API.prototype.validateKeyDerivation = function(opts, cb) {
     var xpriv;
     if (words && (!c.mnemonicHasPassphrase || opts.passphrase)) {
       var m = new Mnemonic(words);
-      xpriv = m.toHDPrivateKey(opts.passphrase, c.network);
+      xpriv = m.toHDPrivateKey(opts.passphrase, c.network, coin);
     }
     if (!xpriv) {
-      xpriv = new Bitcore.HDPrivateKey(c.xPrivKey);
+      xpriv = new CORE_LIBS[coin].HDPrivateKey(c.xPrivKey);
     }
     xpriv = xpriv.deriveChild(c.getBaseAddressDerivationPath());
-    var xpub = new Bitcore.HDPublicKey(c.xPubKey);
+    var xpub = new CORE_LIBS[coin].HDPublicKey(c.xPubKey);
 
-    return testMessageSigning(xpriv, xpub);
+    return testMessageSigning(xpriv, xpub, coin);
   };
 
   var hardcodedOk = true;
@@ -293,7 +292,7 @@ API.prototype.validateKeyDerivation = function(opts, cb) {
     _deviceValidated = true;
   }
 
-  var liveOk = (c.canSign() && !c.isPrivKeyEncrypted()) ? testLiveKeys() : true;
+  var liveOk = (c.canSign() && !c.isPrivKeyEncrypted()) ? testLiveKeys(this.credentials.coin || DEFAULT_COIN) : true;
 
   self.keyDerivationOk = hardcodedOk && liveOk;
 
@@ -304,7 +303,7 @@ API.prototype.validateKeyDerivation = function(opts, cb) {
  * Seed from random with mnemonic
  *
  * @param {Object} opts
- * @param {String} opts.coin - default 'btc'
+ * @param {String} opts.coin - default DEFAULT_COIN
  * @param {String} opts.network - default 'livenet'
  * @param {String} opts.passphrase
  * @param {Number} opts.language - default 'en'
@@ -315,7 +314,7 @@ API.prototype.seedFromRandomWithMnemonic = function(opts) {
   $.checkArgument(_.isUndefined(opts) || _.isObject(opts), 'DEPRECATED: argument should be an options object.');
 
   opts = opts || {};
-  this.credentials = Credentials.createWithMnemonic(opts.coin || 'btc', opts.network || 'livenet', opts.passphrase, opts.language || 'en', opts.account || 0);
+  this.credentials = Credentials.createWithMnemonic(opts.coin || DEFAULT_COIN, opts.network || 'livenet', opts.passphrase, opts.language || 'en', opts.account || 0);
   this.request.setCredentials(this.credentials);
 };
 
@@ -338,13 +337,13 @@ API.prototype.clearMnemonic = function() {
  * Seed from extended private key
  *
  * @param {String} xPrivKey
- * @param {String} opts.coin - default 'btc'
+ * @param {String} opts.coin - default DEFAULT_COIN
  * @param {Number} opts.account - default 0
  * @param {String} opts.derivationStrategy - default 'BIP44'
  */
 API.prototype.seedFromExtendedPrivateKey = function(xPrivKey, opts) {
   opts = opts || {};
-  this.credentials = Credentials.fromExtendedPrivateKey(opts.coin || 'btc', xPrivKey, opts.account || 0, opts.derivationStrategy || Constants.DERIVATION_STRATEGIES.BIP44, opts);
+  this.credentials = Credentials.fromExtendedPrivateKey(opts.coin || DEFAULT_COIN, xPrivKey, opts.account || 0, opts.derivationStrategy || Constants.DERIVATION_STRATEGIES.BIP44, opts);
   this.request.setCredentials(this.credentials);
 };
 
@@ -355,7 +354,7 @@ API.prototype.seedFromExtendedPrivateKey = function(xPrivKey, opts) {
  *
  * @param {String} BIP39 words
  * @param {Object} opts
- * @param {String} opts.coin - default 'btc'
+ * @param {String} opts.coin - default DEFAULT_COIN
  * @param {String} opts.network - default 'livenet'
  * @param {String} opts.passphrase
  * @param {Number} opts.account - default 0
@@ -365,7 +364,7 @@ API.prototype.seedFromMnemonic = function(words, opts) {
   $.checkArgument(_.isUndefined(opts) || _.isObject(opts), 'DEPRECATED: second argument should be an options object.');
 
   opts = opts || {};
-  this.credentials = Credentials.fromMnemonic(opts.coin || 'btc', opts.network || 'livenet', words, opts.passphrase, opts.account || 0, opts.derivationStrategy || Constants.DERIVATION_STRATEGIES.BIP44, opts);
+  this.credentials = Credentials.fromMnemonic(opts.coin || DEFAULT_COIN, opts.network || 'livenet', words, opts.passphrase, opts.account || 0, opts.derivationStrategy || Constants.DERIVATION_STRATEGIES.BIP44, opts);
   this.request.setCredentials(this.credentials);
 };
 
@@ -376,7 +375,7 @@ API.prototype.seedFromMnemonic = function(words, opts) {
  * @param {String} source - A name identifying the source of the xPrivKey (e.g. ledger, TREZOR, ...)
  * @param {String} entropySourceHex - A HEX string containing pseudo-random data, that can be deterministically derived from the xPrivKey, and should not be derived from xPubKey.
  * @param {Object} opts
- * @param {String} opts.coin - default 'btc'
+ * @param {String} opts.coin - default DEFAULT_COIN
  * @param {Number} opts.account - default 0
  * @param {String} opts.derivationStrategy - default 'BIP44'
  */
@@ -384,7 +383,7 @@ API.prototype.seedFromExtendedPublicKey = function(xPubKey, source, entropySourc
   $.checkArgument(_.isUndefined(opts) || _.isObject(opts));
 
   opts = opts || {};
-  this.credentials = Credentials.fromExtendedPublicKey(opts.coin || 'btc', xPubKey, source, entropySourceHex, opts.account || 0, opts.derivationStrategy || Constants.DERIVATION_STRATEGIES.BIP44);
+  this.credentials = Credentials.fromExtendedPublicKey(opts.coin || DEFAULT_COIN, xPubKey, source, entropySourceHex, opts.account || 0, opts.derivationStrategy || Constants.DERIVATION_STRATEGIES.BIP44);
   this.request.setCredentials(this.credentials);
 };
 
@@ -465,7 +464,7 @@ API.prototype._import = function(cb) {
  *
  * @param {String} BIP39 words
  * @param {Object} opts
- * @param {String} opts.coin - default 'btc'
+ * @param {String} opts.coin - default DEFAULT_COIN
  * @param {String} opts.network - default 'livenet'
  * @param {String} opts.passphrase
  * @param {Number} opts.account - default 0
@@ -481,7 +480,7 @@ API.prototype.importFromMnemonic = function(words, opts, cb) {
   opts = opts || {};
 
   function derive(nonCompliantDerivation) {
-    return Credentials.fromMnemonic(opts.coin || 'btc', opts.network || 'livenet', words, opts.passphrase, opts.account || 0, opts.derivationStrategy || Constants.DERIVATION_STRATEGIES.BIP44, {
+    return Credentials.fromMnemonic(opts.coin || DEFAULT_COIN, opts.network || 'livenet', words, opts.passphrase, opts.account || 0, opts.derivationStrategy || Constants.DERIVATION_STRATEGIES.BIP44, {
       nonCompliantDerivation: nonCompliantDerivation,
       entropySourcePath: opts.entropySourcePath,
       walletPrivKey: opts.walletPrivKey,
@@ -514,7 +513,7 @@ API.prototype.importFromMnemonic = function(words, opts, cb) {
  * Import from extended private key
  *
  * @param {String} xPrivKey
- * @param {String} opts.coin - default 'btc'
+ * @param {String} opts.coin - default DEFAULT_COIN
  * @param {Number} opts.account - default 0
  * @param {String} opts.derivationStrategy - default 'BIP44'
  * @param {String} opts.compliantDerivation - default 'true'
@@ -531,7 +530,7 @@ API.prototype.importFromExtendedPrivateKey = function(xPrivKey, opts, cb) {
   }
 
   try {
-    this.credentials = Credentials.fromExtendedPrivateKey(opts.coin || 'btc', xPrivKey, opts.account || 0, opts.derivationStrategy || Constants.DERIVATION_STRATEGIES.BIP44, opts);
+    this.credentials = Credentials.fromExtendedPrivateKey(opts.coin || DEFAULT_COIN, xPrivKey, opts.account || 0, opts.derivationStrategy || Constants.DERIVATION_STRATEGIES.BIP44, opts);
   } catch (e) {
     log.info('xPriv error:', e);
     return cb(new Errors.INVALID_BACKUP);
@@ -548,7 +547,7 @@ API.prototype.importFromExtendedPrivateKey = function(xPrivKey, opts, cb) {
  * @param {String} source - A name identifying the source of the xPrivKey
  * @param {String} entropySourceHex - A HEX string containing pseudo-random data, that can be deterministically derived from the xPrivKey, and should not be derived from xPubKey.
  * @param {Object} opts
- * @param {String} opts.coin - default 'btc'
+ * @param {String} opts.coin - default DEFAULT_COIN
  * @param {Number} opts.account - default 0
  * @param {String} opts.derivationStrategy - default 'BIP44'
  * @param {String} opts.compliantDerivation - default 'true'
@@ -561,7 +560,7 @@ API.prototype.importFromExtendedPublicKey = function(xPubKey, source, entropySou
   opts = opts || {};
   log.debug('Importing from Extended Private Key');
   try {
-    this.credentials = Credentials.fromExtendedPublicKey(opts.coin || 'btc', xPubKey, source, entropySourceHex, opts.account || 0, opts.derivationStrategy || Constants.DERIVATION_STRATEGIES.BIP44, opts);
+    this.credentials = Credentials.fromExtendedPublicKey(opts.coin || DEFAULT_COIN, xPubKey, source, entropySourceHex, opts.account || 0, opts.derivationStrategy || Constants.DERIVATION_STRATEGIES.BIP44, opts);
   } catch (e) {
     log.info('xPriv error:', e);
     return cb(new Errors.INVALID_BACKUP);
@@ -574,6 +573,7 @@ API.prototype.importFromExtendedPublicKey = function(xPubKey, source, entropySou
 API.prototype.decryptBIP38PrivateKey = function(encryptedPrivateKeyBase58, passphrase, opts, cb) {
   var Bip38 = require('bip38');
   var bip38 = new Bip38();
+  var coin = opts.coin || (self.credentials || {}).coin || DEFAULT_COIN;
 
   var privateKeyWif;
   try {
@@ -582,11 +582,11 @@ API.prototype.decryptBIP38PrivateKey = function(encryptedPrivateKeyBase58, passp
     return cb(new Error('Could not decrypt BIP38 private key', ex));
   }
 
-  var privateKey = new Bitcore.PrivateKey(privateKeyWif);
+  var privateKey = new CORE_LIBS[coin].PrivateKey(privateKeyWif);
   var address = privateKey.publicKey.toAddress().toString();
   var addrBuff = new Buffer(address, 'ascii');
-  var actualChecksum = Bitcore.crypto.Hash.sha256sha256(addrBuff).toString('hex').substring(0, 8);
-  var expectedChecksum = Bitcore.encoding.Base58Check.decode(encryptedPrivateKeyBase58).toString('hex').substring(6, 14);
+  var actualChecksum = CORE_LIBS[coin].crypto.Hash.sha256sha256(addrBuff).toString('hex').substring(0, 8);
+  var expectedChecksum = CORE_LIBS[coin].encoding.Base58Check.decode(encryptedPrivateKeyBase58).toString('hex').substring(6, 14);
 
   if (actualChecksum != expectedChecksum)
     return cb(new Error('Incorrect passphrase'));
@@ -599,11 +599,10 @@ API.prototype.getBalanceFromPrivateKey = function(privateKey, coin, cb) {
 
   if (_.isFunction(coin)) {
     cb = coin;
-    coin = 'btc';
+    coin = DEFAULT_COIN;
   }
-  var B = Bitcore_[coin];
  
-  var privateKey = new B.PrivateKey(privateKey);
+  var privateKey = new CORE_LIBS[coin].PrivateKey(privateKey);
   var address = privateKey.publicKey.toAddress();
   self.getUtxos({
     addresses: coin == 'bch' ? address.toLegacyAddress() : address.toString(),
@@ -618,13 +617,11 @@ API.prototype.buildTxFromPrivateKey = function(privateKey, destinationAddress, o
 
   opts = opts || {};
 
-  var coin = opts.coin || 'btc';
-  var B = Bitcore_[coin];
-  var privateKey = B.PrivateKey(privateKey);
+  var coin = opts.coin || DEFAULT_COIN;
+  var privateKey = CORE_LIBS[coin].PrivateKey(privateKey);
   var address = privateKey.publicKey.toAddress();
 
   async.waterfall([
-
     function(next) {
       self.getUtxos({
         addresses: coin == 'bch' ?  address.toLegacyAddress() : address.toString(),
@@ -641,9 +638,9 @@ API.prototype.buildTxFromPrivateKey = function(privateKey, destinationAddress, o
 
       var tx;
       try {
-        var toAddress = B.Address.fromString(destinationAddress);
+        var toAddress = CORE_LIBS[coin].Address.fromString(destinationAddress);
 
-        tx = new B.Transaction()
+        tx = new CORE_LIBS[coin].Transaction()
           .from(utxos)
           .to(toAddress, amount)
           .fee(fee)
@@ -713,10 +710,10 @@ API.prototype.openWallet = function(cb) {
 
 API._buildSecret = function(walletId, walletPrivKey, coin, network) {
   if (_.isString(walletPrivKey)) {
-    walletPrivKey = Bitcore.PrivateKey.fromString(walletPrivKey);
+    walletPrivKey = CORE_LIBS[coin].PrivateKey.fromString(walletPrivKey);
   }
   var widHex = new Buffer(walletId.replace(/-/g, ''), 'hex');
-  var widBase58 = new Bitcore.encoding.Base58(widHex).toString();
+  var widBase58 = new CORE_LIBS[coin].encoding.Base58(widHex).toString();
   return _.padEnd(widBase58, 22, '0') + walletPrivKey.toWIF() + (network == 'testnet' ? 'T' : 'L') + coin;
 };
 
@@ -737,12 +734,12 @@ API.parseSecret = function(secret) {
   try {
     var secretSplit = split(secret, [22, 74, 75]);
     var widBase58 = secretSplit[0].replace(/0/g, '');
-    var widHex = Bitcore.encoding.Base58.decode(widBase58).toString('hex');
+    var coin = secretSplit[3] || DEFAULT_COIN;
+    var widHex = CORE_LIBS[coin].encoding.Base58.decode(widBase58).toString('hex');
     var walletId = split(widHex, [8, 12, 16, 20]).join('-');
 
-    var walletPrivKey = Bitcore.PrivateKey.fromString(secretSplit[1]);
     var networkChar = secretSplit[2];
-    var coin = secretSplit[3] || 'btc';
+    var walletPrivKey = CORE_LIBS[coin].PrivateKey.fromString(secretSplit[1]);
 
     return {
       walletId: walletId,
@@ -765,7 +762,7 @@ API.signTxp = function(txp, derivedXPrivKey) {
   var privs = [];
   var derived = {};
 
-  var xpriv = new Bitcore.HDPrivateKey(derivedXPrivKey);
+  var xpriv = new CORE_LIBS[txp.coin || DEFAULT_COIN].HDPrivateKey(derivedXPrivKey);
 
   _.each(txp.inputs, function(i) {
     $.checkState(i.path, "Input derivation path not available (signing transaction)")
@@ -789,7 +786,8 @@ API.signTxp = function(txp, derivedXPrivKey) {
 };
 
 API.prototype._signTxp = function(txp, password) {
-  var derived = this.credentials.getDerivedXPrivKey(password);
+  var coin = txp.coin || this.credentials.coin;
+  var derived = this.credentials.getDerivedXPrivKey(password, coin);
   return API.signTxp(txp, derived);
 };
 
@@ -812,21 +810,20 @@ API.prototype._addSignaturesToBitcoreTx = function(txp, t, signatures, xpub) {
 
   $.checkState(txp.coin);
 
-  var bitcore = Bitcore_[txp.coin];
-
+  var coin = txp.coin;
 
   var i = 0,
-    x = new bitcore.HDPublicKey(xpub);
+    x = new CORE_LIBS[coin].HDPublicKey(xpub);
 
   _.each(signatures, function(signatureHex) {
     var input = txp.inputs[i];
     try {
-      var signature = bitcore.crypto.Signature.fromString(signatureHex);
+      var signature = CORE_LIBS[coin].crypto.Signature.fromString(signatureHex);
       var pub = x.deriveChild(txp.inputPaths[i]).publicKey;
       var s = {
         inputIndex: i,
         signature: signature,
-        sigtype: bitcore.crypto.Signature.SIGHASH_ALL | bitcore.crypto.Signature.SIGHASH_FORKID,
+        sigtype: CORE_LIBS[coin].crypto.Signature.SIGHASH_ALL | CORE_LIBS[coin].crypto.Signature.SIGHASH_FORKID,
         publicKey: pub,
       }
       ;
@@ -891,7 +888,7 @@ API.prototype._doJoinWallet = function(walletId, walletPrivKey, xPubKey, request
     args.supportBIP44AndP2PKH = opts.supportBIP44AndP2PKH;
 
   var hash = Utils.getCopayerHash(args.name, args.xPubKey, args.requestPubKey);
-  args.copayerSignature = Utils.signMessage(hash, walletPrivKey);
+  args.copayerSignature = Utils.signMessage(hash, walletPrivKey, opts.coin);
 
   var url = '/v2/wallets/' + walletId + '/copayers';
   this.request.post(url, args, function(err, body) {
@@ -1005,7 +1002,7 @@ API.prototype.decryptPrivateKey = function(password) {
 /**
  * Get current fee levels for the specified network
  *
- * @param {string} coin - 'btc' (default) or 'bch'
+ * @param {string} coin - DEFAULT_COIN (default) or 'bch'
  * @param {string} network - 'livenet' (default) or 'testnet'
  * @param {Callback} cb
  * @returns {Callback} cb - Returns error or an object with status information
@@ -1013,10 +1010,10 @@ API.prototype.decryptPrivateKey = function(password) {
 API.prototype.getFeeLevels = function(coin, network, cb) {
   var self = this;
 
-  $.checkArgument(coin || _.includes(['btc', 'bch'], coin));
+  $.checkArgument(coin || _.includes(VALID_COINS, coin));
   $.checkArgument(network || _.includes(['livenet', 'testnet'], network));
 
-  self.request.get('/v2/feelevels/?coin=' + (coin || 'btc') + '&network=' + (network || 'livenet'), function(err, result) {
+  self.request.get('/v2/feelevels/?coin=' + (coin || DEFAULT_COIN) + '&network=' + (network || 'livenet'), function(err, result) {
     if (err) return cb(err);
     return cb(err, result);
   });
@@ -1047,7 +1044,7 @@ API.prototype._checkKeyDerivation = function() {
  * @param {Number} m
  * @param {Number} n
  * @param {object} opts (optional: advanced options)
- * @param {string} opts.coin[='btc'] - The coin for this wallet (btc, bch).
+ * @param {string} opts.coin[=DEFAULT_COIN] - The coin for this wallet.
  * @param {string} opts.network[='livenet']
  * @param {string} opts.singleAddress[=false] - The wallet will only ever have one address.
  * @param {String} opts.walletPrivKey - set a walletPrivKey (instead of random)
@@ -1063,8 +1060,8 @@ API.prototype.createWallet = function(walletName, copayerName, m, n, opts, cb) {
   if (opts) $.shouldBeObject(opts);
   opts = opts || {};
 
-  var coin = opts.coin || 'btc';
-  if (!_.includes(['btc', 'bch'], coin)) return cb(new Error('Invalid coin'));
+  var coin = opts.coin || DEFAULT_COIN;
+  if (!_.includes(VALID_COINS, coin)) return cb(new Error('Invalid coin'));
 
   var network = opts.network || 'livenet';
   if (!_.includes(['testnet', 'livenet'], network)) return cb(new Error('Invalid network'));
@@ -1087,7 +1084,7 @@ API.prototype.createWallet = function(walletName, copayerName, m, n, opts, cb) {
     return cb(new Error('Existing keys were created for a different network'));
   }
 
-  var walletPrivKey = opts.walletPrivKey || new Bitcore.PrivateKey();
+  var walletPrivKey = opts.walletPrivKey || new CORE_LIBS[coin].PrivateKey();
 
   var c = self.credentials;
   c.addWalletPrivateKey(walletPrivKey.toString());
@@ -1097,7 +1094,7 @@ API.prototype.createWallet = function(walletName, copayerName, m, n, opts, cb) {
     name: encWalletName,
     m: m,
     n: n,
-    pubKey: (new Bitcore.PrivateKey(walletPrivKey)).toPublicKey().toString(),
+    pubKey: (new CORE_LIBS[coin].PrivateKey(walletPrivKey)).toPublicKey().toString(),
     coin: coin,
     network: network,
     singleAddress: !!opts.singleAddress,
@@ -1126,7 +1123,7 @@ API.prototype.createWallet = function(walletName, copayerName, m, n, opts, cb) {
  * @param {String} secret
  * @param {String} copayerName
  * @param {Object} opts
- * @param {string} opts.coin[='btc'] - The expected coin for this wallet (btc, bch).
+ * @param {string} opts.coin[=DEFAULT_COIN] - The expected coin for this wallet (btc, bch).
  * @param {Boolean} opts.dryRun[=false] - Simulate wallet join
  * @param {Callback} cb
  * @returns {Callback} cb - Returns the wallet
@@ -1144,8 +1141,8 @@ API.prototype.joinWallet = function(secret, copayerName, opts, cb) {
 
   opts = opts || {};
 
-  var coin = opts.coin || 'btc';
-  if (!_.includes(['btc', 'bch'], coin)) return cb(new Error('Invalid coin'));
+  var coin = opts.coin || DEFAULT_COIN;
+  if (!_.includes(VALID_COINS, coin)) return cb(new Error('Invalid coin'));
 
   try {
     var secretData = API.parseSecret(secret);
@@ -1196,18 +1193,18 @@ API.prototype.recreateWallet = function(cb) {
     };
 
     var c = self.credentials;
-    var walletPrivKey = Bitcore.PrivateKey.fromString(c.walletPrivKey);
+    var coin = c.coin;
+    var walletPrivKey = CORE_LIBS[coin].PrivateKey.fromString(c.walletPrivKey);
     var walletId = c.walletId;
     var supportBIP44AndP2PKH = c.derivationStrategy != Constants.DERIVATION_STRATEGIES.BIP45;
     var encWalletName = Utils.encryptMessage(c.walletName || 'recovered wallet', c.sharedEncryptingKey);
-    var coin = c.coin;
 
     var args = {
       name: encWalletName,
       m: c.m,
       n: c.n,
       pubKey: walletPrivKey.toPublicKey().toString(),
-      coin: c.coin,
+      coin: coin,
       network: c.network,
       id: walletId,
       supportBIP44AndP2PKH: supportBIP44AndP2PKH,
@@ -1427,7 +1424,7 @@ API.prototype.fetchPayPro = function(opts, cb) {
  
   PayPro.get({
     url: opts.payProUrl,
-    coin: this.credentials.coin || 'btc',
+    coin: this.credentials.coin || DEFAULT_COIN,
     network: this.credentials.network || 'livenet',
 
     // for testing
@@ -1536,7 +1533,7 @@ API.prototype.publishTxProposal = function(opts, cb) {
   var t = Utils.buildTx(opts.txp);
   var hash = t.uncheckedSerialize();
   var args = {
-    proposalSignature: Utils.signMessage(hash, self.credentials.requestPrivKey)
+    proposalSignature: Utils.signMessage(hash, self.credentials.requestPrivKey, self.credentials.coin)
   };
 
   var url = '/v1/txproposals/' + opts.txp.id + '/publish/';
@@ -1641,7 +1638,7 @@ API.prototype.getBalance = function(opts, cb) {
 
   var args = [];
   if (opts.coin) {
-    if (!_.includes(['btc', 'bch'], opts.coin)) return cb(new Error('Invalid coin'));
+    if (!_.includes(VALID_COINS, opts.coin)) return cb(new Error('Invalid coin'));
     args.push('coin=' + opts.coin);
   }
   var qs = '';
@@ -1712,7 +1709,7 @@ API.prototype.getPayPro = function(txp, cb) {
 
   PayPro.get({
     url: txp.payProUrl,
-    coin: txp.coin || 'btc',
+    coin: txp.coin || DEFAULT_COIN,
     network: txp.network || 'livenet',
 
     // for testing
@@ -1838,7 +1835,7 @@ API.prototype.signTxProposalFromAirGapped = function(txp, encryptedPkr, m, n, pa
  * @param {Number} m
  * @param {Number} n
  * @param {Object} opts
- * @param {String} opts.coin (default 'btc')
+ * @param {String} opts.coin (default DEFAULT_COIN)
  * @param {String} opts.passphrase
  * @param {Number} opts.account - default 0
  * @param {String} opts.derivationStrategy - default 'BIP44'
@@ -1848,8 +1845,8 @@ API.signTxProposalFromAirGapped = function(key, txp, unencryptedPkr, m, n, opts)
   var self = this;
   opts = opts || {}
 
-  var coin = opts.coin || 'btc';
-  if (!_.includes(['btc', 'bch'], coin)) return cb(new Error('Invalid coin'));
+  var coin = opts.coin || DEFAULT_COIN;
+  if (!_.includes(VALID_COINS, coin)) return cb(new Error('Invalid coin'));
 
   var publicKeyRing = JSON.parse(unencryptedPkr);
 
@@ -1980,7 +1977,7 @@ API.prototype.broadcastTxProposal = function(txp, cb) {
           disableLargeFees: true,
           disableDustOutputs: true
         }),
-        coin: txp.coin || 'btc',
+        coin: txp.coin || DEFAULT_COIN,
         network: txp.network || 'livenet',
 
         // for testing
@@ -2112,12 +2109,14 @@ API.prototype.addAccess = function(opts, cb) {
 
   opts = opts || {};
 
-  var reqPrivKey = new Bitcore.PrivateKey(opts.generateNewKey ? null : this.credentials.requestPrivKey);
+  var self = this;
+  var coin = self.credentials.coin;
+  var reqPrivKey = new CORE_LIBS[coin].PrivateKey(opts.generateNewKey ? null : this.credentials.requestPrivKey);
   var requestPubKey = reqPrivKey.toPublicKey().toString();
 
-  var xPriv = new Bitcore.HDPrivateKey(this.credentials.xPrivKey)
+  var xPriv = new CORE_LIBS[coin].HDPrivateKey(this.credentials.xPrivKey)
     .deriveChild(this.credentials.getBaseAddressDerivationPath());
-  var sig = Utils.signRequestPubKey(requestPubKey, xPriv);
+  var sig = Utils.signRequestPubKey(requestPubKey, xPriv, coin);
   var copayerId = this.credentials.copayerId;
 
   var encCopayerName = opts.name ? Utils.encryptMessage(opts.name, this.credentials.sharedEncryptingKey) : null;
