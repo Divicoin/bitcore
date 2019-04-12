@@ -6,10 +6,8 @@ COPY lerna.json ./
 
 COPY ./packages/bitcore-build/package.json ./packages/bitcore-build/package.json
 COPY ./packages/bitcore-mnemonic/package.json ./packages/bitcore-mnemonic/package.json
-COPY ./packages/bitcore-lib/package.json ./packages/bitcore-lib/package.json
-COPY ./packages/bitcore-lib-cash/package.json ./packages/bitcore-lib-cash/package.json
-COPY ./packages/bitcore-p2p/package.json ./packages/bitcore-p2p/package.json
-COPY ./packages/bitcore-p2p-cash/package.json ./packages/bitcore-p2p-cash/package.json
+COPY ./packages/divicore-lib/package.json ./packages/divicore-lib/package.json
+COPY ./packages/divicore-p2p/package.json ./packages/divicore-p2p/package.json
 COPY ./packages/bitcore-wallet-client/package.json ./packages/bitcore-wallet-client/package.json
 COPY ./packages/bitcore-client/package.json ./packages/bitcore-client/package.json
 COPY ./packages/bitcore-wallet/package.json ./packages/bitcore-wallet/package.json
