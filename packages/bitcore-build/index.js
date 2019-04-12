@@ -22,7 +22,7 @@ function startGulp(name, opts) {
   var task = {};
   opts = opts || {};
   var browser = !opts.skipBrowser;
-  var fullname = name ? 'bitcore-' + name : 'bitcore';
+  var fullname = name;
   var files = ['lib/**/*.js'];
   var tests = ['test/**/*.js'];
   var alljs = files.concat(tests);
@@ -87,9 +87,9 @@ function startGulp(name, opts) {
     var browserifyCommand;
 
     if (name !== 'lib') {
-      browserifyCommand = browserifyPath + ' --require ./index.js:' + fullname + ' --external bitcore-lib -o ' + fullname + '.js';
+      browserifyCommand = browserifyPath + ' --require ./index.js:' + fullname + ' --external divicore-lib -o ' + fullname + '.js';
     } else {
-      browserifyCommand = browserifyPath + ' --require ./index.js:bitcore-lib -o bitcore-lib.js';
+      browserifyCommand = browserifyPath + ' --require ./index.js:divicore-lib -o divicore-lib.js';
     }
 
     task['browser:uncompressed'] = shell.task([

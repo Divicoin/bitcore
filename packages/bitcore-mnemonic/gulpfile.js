@@ -1,4 +1,4 @@
 
 var startGulp = require('bitcore-build');
-Object.assign(exports, startGulp('mnemonic'))
+Object.assign(exports, startGulp('bitcore-mnemonic'))
 
