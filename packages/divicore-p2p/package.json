@@ -1,7 +1,7 @@
 {
   "name": "divicore-p2p",
   "version": "0.0.1",
-  "description": "Interface to the bitcoin P2P network for divicore",
+  "description": "Interface to the divi P2P network for divicore",
   "main": "index.js",
   "scripts": {
     "lint": "gulp lint",
@@ -11,7 +11,7 @@
     "build": "gulp"
   },
   "keywords": [
-    "bitcoin",
+    "divi",
     "divicore"
   ],
   "repository": {
