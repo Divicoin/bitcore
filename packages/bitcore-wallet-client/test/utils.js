@@ -11,7 +11,7 @@ var Utils = require('../lib/common/utils');
 describe('Utils', function() {
   describe('#hashMessage', function() {
     it('should create a hash', function() {
-      var res = Utils.hashMessage('hola');
+      var res = Utils.hashMessage('hola', 'btc');
       res.toString('hex').should.equal('4102b8a140ec642feaa1c645345f714bc7132d4fd2f7f6202db8db305a96172f');
     });
   });
